@@ -1,10 +1,12 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io/ioutil"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/myzhan/boomer"
@@ -20,23 +22,43 @@ var timeout time.Duration
 var postFile string
 var rawData string
 var contentType string
+var jsonHeaders string
 var disableKeepalive bool
+var arrayHeaders []string
 
 func str2byte(s string) []byte {
 	return []byte(s)
+}
+
+func json2map(s string) map[string]string {
+	m := make(map[string]string)
+	err := json.Unmarshal(str2byte(s), &m)
+	if s == "" {
+		return m
+	}
+	if err != nil {
+		log.Println("parse json headers err: " + err.Error())
+	}
+	return m
 }
 
 func worker() {
 	req := fasthttp.AcquireRequest()
 	req.Header.SetMethod(method)
 	req.Header.SetContentType(contentType)
+
+	setArrayHeader(req, arrayHeaders)
+	setJsonHeaders(req, jsonHeaders)
+
 	if disableKeepalive {
 		req.Header.SetConnectionClose()
 	}
+
 	req.SetRequestURI(url)
 	if rawData != "" {
 		req.SetBody(postBody)
 	}
+
 	if postFile != "" {
 		req.SetBody(postBody)
 	}
@@ -72,6 +94,36 @@ func worker() {
 	fasthttp.ReleaseResponse(resp)
 }
 
+func setJsonHeaders(req *fasthttp.Request, jsonStr string) {
+	for k, v := range json2map(jsonStr) {
+		req.Header.Set(k, v)
+	}
+}
+
+func setArrayHeader(req *fasthttp.Request, h []string) {
+	for _, headers := range h {
+		kv := strings.Split(headers, ":")
+		k := kv[0]
+		v := kv[1]
+		v = strings.Trim(v, " ")
+		req.Header.Set(k, v)
+	}
+}
+
+type arrayFlags []string
+
+func (i *arrayFlags) String() string {
+	return "my string representation"
+}
+
+func (i *arrayFlags) Set(value string) error {
+	*i = append(*i, value)
+	arrayHeaders = append(arrayHeaders, value)
+	return nil
+}
+
+var H arrayFlags
+
 func main() {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 
@@ -81,6 +133,8 @@ func main() {
 	flag.StringVar(&postFile, "post-file", "", "File containing data to POST. Remember also to set --content-type")
 	flag.StringVar(&rawData, "raw-data", "", "raw data to POST. Remember also to set --content-type")
 	flag.StringVar(&contentType, "content-type", "text/plain", "Content-type header")
+	flag.StringVar(&jsonHeaders, "json-headers", "", "json header")
+	flag.Var(&H, "H", "header arrays.")
 
 	flag.BoolVar(&disableKeepalive, "disable-keepalive", false, "Disable keepalive")
 
