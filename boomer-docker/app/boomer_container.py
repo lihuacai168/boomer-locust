@@ -1,52 +1,77 @@
-from typing import Union, List
+import json
+from typing import Union, List, Optional, Any
 
 import docker
+from docker import DockerClient
 from pydantic import BaseModel
 
 
-class Container(BaseModel):
+class Slave(BaseModel):
     id: str
     name: str
     status: str
     image: str
+    cmd: List[str] = []
+    entrypoint: List[Any] = None
 
 
 class RequestCmd(BaseModel):
     url: str
     method: str
     headers: dict = {'Content-Type': 'application/json'}
-    body: Union[list, dict]
+    body: Union[list, dict] = None
 
-    def to_request_str(self):
-        base_cmd = f"--url {self.url} --method {self.method} --headers {self.headers}"
-        if self.body:
-            base_cmd += f" --raw-data {self.body}"
+    def to_cmd(self):
+        base_cmd = f''' --url {self.url} --method {self.method} --json-headers \'{self.headers}\''''
+        if self.body is not None:
+            base_cmd += f''' --raw-data \'{json.dumps(self.body)}\''''
         return base_cmd
 
 
-class CreateContainer(BaseModel):
-    image: str
+class BoomerCmd(BaseModel):
+    master_host: str = '127.0.0.1'
+    master_port: int = 5557
+    max_rps: int
+    request_increase_rate: int = -1
+    verbose = False
+
+    def to_cmd(self):
+        cmd = f''' --master-host {self.master_host} --master-port {self.master_port} --max-rps {self.max_rps} '''
+        return cmd
+
+
+class ContainerConfig(BaseModel):
+    host: Optional[str] = None
+    port: Optional[int] = None
+    socket: str = 'unix://var/run/docker.sock'
+
+
+class CreateSlave(BaseModel):
+    image: str = 'boomer:latest'
     request: RequestCmd
+    container_config: ContainerConfig
+    boomer_cmd: BoomerCmd
 
 
-class SlaveConfig(BaseModel):
-    host: str = '127.0.0.1'
-    port: int = 2375
+def get_client(config: ContainerConfig) -> DockerClient:
+    if config.host and config.port:
+        return docker.DockerClient(base_url=f'tcp://{config.host}:{config.port}')
+    return docker.DockerClient(base_url=config.socket)
 
 
 class Boomer(object):
-    def __init__(self, slave_config: SlaveConfig):
-        # self.client = docker.from_env()
-        # self.client = docker.DockerClient(base_url='unix://var/run/docker.sock')
-        self.client = docker.DockerClient(base_url=f'tcp://{slave_config.host}:{slave_config.port}')
-        # self.container = self.client.containers.run('boomer:latest', cmd, detach=True)
-        # self.container = self.client.containers.run('boomer:latest', detach=True)
+    def __init__(self, client: DockerClient):
+        self.client = client
 
-    def create_container(self, image, source_req: RequestCmd) -> Container:
+    def create_slave(self, image, req_cmd: RequestCmd, boomer_cmd: BoomerCmd) -> Slave:
 
+        b_cmd = boomer_cmd.to_cmd()
         # cmd = '''--master-host=192.168.31.12  --url=http://192.168.31.12:8081/post  --method=POST --content-type="application/json"  --raw-data='[123,345]' --verbose 1'''
-        cmd = source_req.to_request_str()
-
+        r_cmd = req_cmd.to_cmd()
+        cmd = b_cmd + r_cmd
+        # verbose only works with the end of the command
+        if boomer_cmd.verbose:
+            cmd += ' --verbose 1'
         container = self.client.containers.run(image, cmd, detach=True)
         data = {
             'id': container.id,
@@ -54,18 +79,22 @@ class Boomer(object):
             'status': container.status,
             'image': container.image.tags[0],
         }
-        return Container(**data)
+        return Slave(**data)
 
     def stop_by_id(self, container_id):
         return self._do_by_id(container_id, 'stop')
 
-    def remove_by_id(self, container_id):
+    def remove_by_id(self, container_id: str, force: bool = False) -> bool:
+        if force:
+            self.stop_by_id(container_id)
         return self._do_by_id(container_id, 'remove')
 
     def _do_by_id(self, container_id, cmd):
-        container = self.client.containers.get(container_id)
-        if not container:
+        try:
+            container = self.client.containers.get(container_id)
+        except Exception as e:
             return False
+
         getattr(container, cmd)()
         return True
 
@@ -82,11 +111,29 @@ class Boomer(object):
                 return True
         return False
 
-    def list_containers(self) -> List[Container]:
-        # return self.client.containers.list()
-        return [Container(id=c.id, name=c.name, status=c.status, image=c.image.tags[0]) for c in self.client.containers.list()]
+    def list_slave(self) -> List[Slave]:
+        return [Slave(id=c.id,
+                      name=c.name,
+                      status=c.status,
+                      image=c.image.tags[0],
+                      entrypoint=c.attrs['Config']['Entrypoint'],
+                      cmd=c.attrs['Config']['Cmd']) for c in self.client.containers.list() if
+                c.image.tags[0].startswith('boomer')]
+
+    def stop_all_slave(self):
+        for container in self.client.containers.list():
+            if container.image.tags[0].startswith('boomer'):
+                container.stop()
+
+    def remove_all_slave(self, force: bool = False) -> bool:
+        if force:
+            self.stop_all_slave()
+        for c in self.client.containers.list():
+            if c.image.tags[0].startswith('boomer'):
+                self.client.containers.get(c.id).stop()
+        return True
 
 
 if __name__ == '__main__':
     boomer = Boomer()
-    print(boomer.list_containers())
+    print(boomer.list_slave())
