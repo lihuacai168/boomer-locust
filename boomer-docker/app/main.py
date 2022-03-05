@@ -4,6 +4,7 @@ from fastapi import FastAPI
 
 from .boomer_container import Boomer, Slave, CreateSlave, ContainerConfig, get_client
 
+
 app = FastAPI()
 
 
@@ -37,3 +38,19 @@ def remove_all_slave(force: bool = False):
     client = get_client(config)
     b = Boomer(client=client)
     return b.remove_all_slave(force)
+
+
+@app.post("/stop_slave_by_id")
+def stop_slave_by_id(container_id: str):
+    config = ContainerConfig()
+    client = get_client(config)
+    b = Boomer(client=client)
+    return b.stop_by_id(container_id)
+
+
+@app.post("/stop_all_slave")
+def stop_all_slave():
+    config = ContainerConfig()
+    client = get_client(config)
+    b = Boomer(client=client)
+    return b.stop_all_slave()

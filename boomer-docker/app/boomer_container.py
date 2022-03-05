@@ -4,6 +4,7 @@ from typing import Union, List, Optional, Any
 import docker
 from docker import DockerClient
 from pydantic import BaseModel
+from loguru import logger
 
 
 class Slave(BaseModel):
@@ -93,6 +94,7 @@ class Boomer(object):
         try:
             container = self.client.containers.get(container_id)
         except Exception as e:
+            logger.warning(f'Container {container_id} not found')
             return False
 
         getattr(container, cmd)()
