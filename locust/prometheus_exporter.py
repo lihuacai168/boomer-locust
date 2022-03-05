@@ -49,6 +49,11 @@ class LocustCollector(object):
 
             metric = Metric('locust_user_count', 'Swarmed users', 'gauge')
             metric.add_sample('locust_user_count', value=runner.user_count, labels={})
+            metric.add_sample('locust_slave_count_running', value=len(runner.clients.running), labels={})
+            metric.add_sample('locust_slave_count_missing', value=len(runner.clients.missing), labels={})
+            metric.add_sample('locust_slave_count_ready', value=len(runner.clients.ready), labels={})
+            metric.add_sample('locust_slave_count_spawning', value=len(runner.clients.spawning), labels={})
+
             yield metric
 
             metric = Metric('locust_errors', 'Locust requests errors', 'gauge')
