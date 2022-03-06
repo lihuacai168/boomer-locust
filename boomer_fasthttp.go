@@ -31,7 +31,7 @@ var disableKeepalive bool
 var arrayHeaders []string
 var csvData [][]string
 var useSequenceBody bool
-var rawDataType string
+var jsonValueType string
 var reqCount = 1
 
 // body = ["$a"]
@@ -82,17 +82,13 @@ func csv2array(file string) {
 	}
 }
 
-func init() {
-	csv2array("./data.csv")
-}
-
-func string2int(s string) int {
+func string2int(s string) (int, error) {
 	i, err := strconv.Atoi(s)
 	if err != nil {
 		log.Println("parse int err: " + err.Error())
-		return 0
+		return -1, err
 	}
-	return i
+	return i, nil
 }
 
 // string2map convert string to map
@@ -103,28 +99,85 @@ func string2map(s string) {
 	}
 }
 
-func handleReplaceBody(req *fasthttp.Request) {
-	switch rawDataType {
-	case "map_string_int":
+func getRow() []string {
+	mod := (reqCount - 1) % len(csvData)
+	row := csvData[mod]
+	return row
+}
+func handleReplaceBody(dataType string) []byte {
+	row := getRow()
+	switch dataType {
+	case "int":
+		m := make(map[string]string)
+		newM := make(map[string]int)
+		err := json.Unmarshal(str2byte(rawData), &m)
+		if err != nil {
+			log.Fatalf("parse json err: " + err.Error())
+		}
+		for k, v := range m {
+			i, ok := replaceKV[v]
+			if ok {
+				newValue, err := string2int(row[i])
+				if err != nil {
+					log.Fatalf("parse int err: " + err.Error())
+				}
+				newM[k] = newValue
+			}
+		}
+		jsonStr, _ := json.Marshal(newM)
+		return jsonStr
+	case "intArray":
+		m := make(map[string]string)
+		newM := make(map[string][1]int)
+		err := json.Unmarshal(str2byte(rawData), &m)
+		if err != nil {
+			log.Fatalf("parse json err: " + err.Error())
+		}
+		for k, v := range m {
+			i, ok := replaceKV[v]
+			if ok {
+				intValue, err := string2int(row[i])
+				newValue := [1]int{intValue}
+				if err != nil {
+					log.Fatalf("parse int err: " + err.Error())
+				}
+				newM[k] = newValue
+			}
+		}
+		jsonStr, _ := json.Marshal(newM)
+		return jsonStr
+	case "string":
+		m := make(map[string]string)
+		err := json.Unmarshal(str2byte(rawData), &m)
+		if err != nil {
+			log.Fatalf("parse json err: " + err.Error())
+		}
+		for k, v := range m {
+			i, ok := replaceKV[v]
+			if ok {
+				m[k] = row[i]
+			}
+		}
+		jsonStr, _ := json.Marshal(m)
+		return jsonStr
+	default:
 		m := make(map[string]interface{})
 		err := json.Unmarshal(str2byte(rawData), &m)
 		if err != nil {
 			log.Fatalf("parse json err: " + err.Error())
-			return
 		}
-		mod := (reqCount - 1) % len(csvData)
-		log.Printf("req: %d, index: %d", reqCount, mod)
-		row := csvData[mod]
-		log.Printf("row: %v", row)
 		for k, v := range m {
 			originValue := fmt.Sprintf("%s", v)
 			i, ok := replaceKV[originValue]
 			if ok {
-				m[k] = string2int(row[i])
+				newValue, err := string2int(row[i])
+				if err == nil {
+					m[k] = newValue
+				}
 			}
 		}
 		jsonStr, _ := json.Marshal(m)
-		req.SetBody(jsonStr)
+		return jsonStr
 	}
 }
 func worker() {
@@ -140,17 +193,19 @@ func worker() {
 	}
 
 	req.SetRequestURI(url)
-	if rawData != "" {
-		req.SetBody(postBody)
-	}
 
 	if postFile != "" {
 		req.SetBody(postBody)
 	}
-	// TODO handle replace body, map[string]int map[string]string map[string]interface{}
 	// TODO handle array body string, int
-	rawDataType = "map_string_int"
-	handleReplaceBody(req)
+	if jsonValueType != "" {
+		newBody := handleReplaceBody(jsonValueType)
+		req.SetBody(newBody)
+	} else {
+		if rawData != "" {
+			req.SetBody(postBody)
+		}
+	}
 
 	resp := fasthttp.AcquireResponse()
 
@@ -222,11 +277,13 @@ func main() {
 	flag.DurationVar(&timeout, "timeout", 10*time.Second, "HTTP request timeout")
 	flag.StringVar(&postFile, "post-file", "", "File containing data to POST. Remember also to set --content-type")
 	flag.StringVar(&rawData, "raw-data", "", "raw data to POST. Remember also to set --content-type")
+
 	flag.StringVar(&contentType, "content-type", "text/plain", "Content-type header")
 
 	flag.StringVar(&jsonHeaders, "json-headers", "", "json header")
 	flag.Var(&H, "H", "header arrays.")
 
+	flag.StringVar(&jsonValueType, "json-value-type", "", `one of int, intArray, string, interface, default is ""`)
 	flag.StringVar(&replaceStrIndex, "replace-str-index", "", `replace string index: '{"$a": 0}', body {"a": "$a"}, value $a replace csv per row[0]`)
 
 	flag.BoolVar(&disableKeepalive, "disable-keepalive", false, "Disable keepalive")
@@ -241,9 +298,11 @@ url: %s
 timeout: %v
 post-file: %s
 raw-data: %s
+replace-str-index: %s
+json-value-type: %s
 content-type: %s
 disable-keepalive: %t
-verbose: %t`, method, url, timeout, postFile, rawData, contentType, disableKeepalive, verbose)
+verbose: %t`, method, url, timeout, postFile, rawData, replaceStrIndex, jsonValueType, contentType, disableKeepalive, verbose)
 
 	if url == "" {
 		log.Fatalln("--url can't be empty string, please specify a URL that you want to test.")
@@ -254,6 +313,8 @@ verbose: %t`, method, url, timeout, postFile, rawData, contentType, disableKeepa
 	}
 
 	if replaceStrIndex != "" {
+		csv2array("./data.csv")
+		// init replaceKV
 		string2map(replaceStrIndex)
 	}
 	if method == "POST" {
