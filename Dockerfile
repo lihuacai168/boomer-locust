@@ -1,5 +1,8 @@
 FROM busybox
 
-COPY boomer_linux /usr/local/bin/boomer
+WORKDIR /app
 
-ENTRYPOINT ["/usr/local/bin/boomer"]
+COPY boomer_linux .
+COPY data.csv .
+
+ENTRYPOINT ["/app/boomer_linux"]
