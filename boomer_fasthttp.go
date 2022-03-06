@@ -2,9 +2,9 @@ package main
 
 import (
 	"encoding/csv"
-	"encoding/json"
 	"flag"
 	"fmt"
+	jsoniter "github.com/json-iterator/go"
 	"io"
 	"io/ioutil"
 	"log"
@@ -16,6 +16,8 @@ import (
 	"github.com/myzhan/boomer"
 	"github.com/valyala/fasthttp"
 )
+
+var json = jsoniter.ConfigCompatibleWithStandardLibrary
 
 var client *fasthttp.Client
 var postBody []byte
