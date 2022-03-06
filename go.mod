@@ -1,6 +1,6 @@
 module boomer_demo
 
-go 1.17
+go 1.18
 
 require (
 	github.com/myzhan/boomer v1.6.0

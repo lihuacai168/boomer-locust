@@ -32,7 +32,6 @@ var jsonHeaders string
 var disableKeepalive bool
 var arrayHeaders []string
 var csvData [][]string
-var useSequenceBody bool
 var jsonValueType string
 var reqCount = 1
 
@@ -106,82 +105,54 @@ func getRow() []string {
 	row := csvData[mod]
 	return row
 }
-func handleReplaceBody(dataType string) []byte {
-	row := getRow()
-	switch dataType {
-	case "int":
-		m := make(map[string]string)
-		newM := make(map[string]int)
-		err := json.Unmarshal(str2byte(rawData), &m)
-		if err != nil {
-			log.Fatalf("parse json err: " + err.Error())
-		}
-		for k, v := range m {
-			i, ok := replaceKV[v]
-			if ok {
-				newValue, err := string2int(row[i])
-				if err != nil {
-					log.Fatalf("parse int err: " + err.Error())
-				}
-				newM[k] = newValue
-			}
-		}
-		jsonStr, _ := json.Marshal(newM)
-		return jsonStr
-	case "intArray":
-		m := make(map[string]string)
-		newM := make(map[string][1]int)
-		err := json.Unmarshal(str2byte(rawData), &m)
-		if err != nil {
-			log.Fatalf("parse json err: " + err.Error())
-		}
-		for k, v := range m {
-			i, ok := replaceKV[v]
-			if ok {
-				intValue, err := string2int(row[i])
-				newValue := [1]int{intValue}
-				if err != nil {
-					log.Fatalf("parse int err: " + err.Error())
-				}
-				newM[k] = newValue
-			}
-		}
-		jsonStr, _ := json.Marshal(newM)
-		return jsonStr
-	case "string":
-		m := make(map[string]string)
-		err := json.Unmarshal(str2byte(rawData), &m)
-		if err != nil {
-			log.Fatalf("parse json err: " + err.Error())
-		}
-		for k, v := range m {
-			i, ok := replaceKV[v]
-			if ok {
-				m[k] = row[i]
-			}
-		}
-		jsonStr, _ := json.Marshal(m)
-		return jsonStr
-	default:
-		m := make(map[string]interface{})
-		err := json.Unmarshal(str2byte(rawData), &m)
-		if err != nil {
-			log.Fatalf("parse json err: " + err.Error())
-		}
-		for k, v := range m {
-			originValue := fmt.Sprintf("%s", v)
-			i, ok := replaceKV[originValue]
-			if ok {
-				newValue, err := string2int(row[i])
-				if err == nil {
-					m[k] = newValue
-				}
-			}
-		}
-		jsonStr, _ := json.Marshal(m)
-		return jsonStr
-	}
+
+type TjsonValues interface {
+	int | string | []int | interface{}
 }
+
+func HandleReplaceBody(rawData []byte, dataType string, row []string, replaceKV map[string]int) []byte {
+	m := make(map[string]TjsonValues)
+	err := json.Unmarshal(rawData, &m)
+	if err != nil {
+		log.Fatalf("parse json err: " + err.Error())
+	}
+	var newValue TjsonValues
+	for k, v := range m {
+		i, ok := replaceKV[fmt.Sprintf("%s", v)]
+		if !ok {
+			continue
+		}
+		originValue := row[i]
+		switch dataType {
+		case "int":
+			intValue, err := string2int(originValue)
+			if err != nil {
+				log.Println("parse int err: " + err.Error())
+				continue
+			}
+			newValue = intValue
+		case "intArray":
+			intValue, err := string2int(originValue)
+			if err != nil {
+				log.Println("parse int err: " + err.Error())
+				continue
+			}
+			newValue = [1]int{intValue}
+		case "interface":
+			intValue, err := string2int(originValue)
+			if err != nil {
+				newValue = originValue
+			}
+			newValue = intValue
+		default:
+			newValue = originValue
+		}
+		m[k] = newValue
+	}
+	jsonStr, _ := json.Marshal(m)
+	return jsonStr
+}
+
 func worker() {
 	req := fasthttp.AcquireRequest()
 	req.Header.SetMethod(method)
@@ -201,7 +172,9 @@ func worker() {
 	}
 	// TODO handle array body string, int
 	if jsonValueType != "" {
-		newBody := handleReplaceBody(jsonValueType)
+		row := getRow()
+		b := str2byte(rawData)
+		newBody := HandleReplaceBody(b, jsonValueType, row, replaceKV)
 		req.SetBody(newBody)
 	} else {
 		if rawData != "" {
