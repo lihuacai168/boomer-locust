@@ -2,7 +2,21 @@
 
 # Quick Start
 
-## Go build
+## Docker Build
+```shell
+docker build -t boomer:latest .
+```
+## Docker Run
+```shell
+# http get
+docker run boomer:latest --run-tasks worker --url='http://httpbin.org/get?a=123' --method=GET
+
+# http post
+docker run boomer:latest --run-tasks worker --url='http://httpbin.org/post' --method=POST --data='{"a":123}'
+```
+
+
+# Local Dev
 ```shell
 # mac local
 go build -o boomer
