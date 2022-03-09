@@ -34,6 +34,7 @@ var arrayHeaders []string
 var csvData [][]string
 var jsonValueType string
 var reqCount = 1
+var removeJsonStringBackslash bool
 
 // body = ["$a"]
 // or body = {"a": "$a", "b": "$b"}
@@ -263,9 +264,16 @@ func main() {
 
 	flag.BoolVar(&disableKeepalive, "disable-keepalive", false, "Disable keepalive")
 
+	flag.BoolVar(&removeJsonStringBackslash, "remove-json-string-backslash", true, "remove json string backslash")
 	flag.BoolVar(&verbose, "verbose", false, "Print debug log")
 
 	flag.Parse()
+
+	if removeJsonStringBackslash {
+		replaceStrIndex = strings.Replace(replaceStrIndex, "\\", "", -1)
+		rawData = strings.Replace(rawData, "\\", "", -1)
+		jsonHeaders = strings.Replace(jsonHeaders, "\\", "", -1)
+	}
 
 	log.Printf(`Fasthttp benchmark is running with these args:
 method: %s
@@ -277,7 +285,8 @@ replace-str-index: %s
 json-value-type: %s
 content-type: %s
 disable-keepalive: %t
-verbose: %t`, method, url, timeout, postFile, rawData, replaceStrIndex, jsonValueType, contentType, disableKeepalive, verbose)
+remove-json-string-backslash: %t
+verbose: %t`, method, url, timeout, postFile, rawData, replaceStrIndex, jsonValueType, contentType, disableKeepalive, verbose, removeJsonStringBackslash)
 
 	if url == "" {
 		log.Fatalln("--url can't be empty string, please specify a URL that you want to test.")
