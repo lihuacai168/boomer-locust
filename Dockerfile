@@ -14,14 +14,12 @@ RUN go mod download
 COPY boomer_fasthttp.go .
 RUN go build -ldflags="-s -w" -o /app/boomer ./boomer_fasthttp.go
 
-FROM alpine as certs
-RUN apk update && apk add ca-certificates
 
 FROM busybox
 
 WORKDIR /app
 COPY data.csv .
-COPY --from=certs /etc/ssl/certs /etc/ssl/certs
+COPY --from=builder /etc/ssl/certs /etc/ssl/certs
 COPY --from=builder /app/boomer /app/boomer
 
 ENTRYPOINT ["/app/boomer"]
