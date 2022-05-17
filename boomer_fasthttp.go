@@ -208,7 +208,7 @@ func worker() {
 	boomer.RecordSuccess("http", url, elapsed.Nanoseconds()/int64(time.Millisecond), int64(len(resp.Body())))
 
 	if verbose {
-		log.Println(string(resp.Body()))
+		log.Println("resp: " + string(resp.Body()))
 	}
 
 	fasthttp.ReleaseRequest(req)
@@ -292,7 +292,7 @@ func main() {
 		s := string(b)
 		jsonHeaders = s
 	}
-	log.Printf(`Fasthttp benchmark is running with these args:
+	log.Printf(`Fasthttp is running with these args:
 method: %s
 url: %s
 timeout: %v
@@ -303,7 +303,7 @@ json-value-type: %s
 content-type: %s
 disable-keepalive: %t
 remove-json-string-backslash: %t
-verbose: %t`, method, url, timeout, postFile, rawData, replaceStrIndex, jsonValueType, contentType, disableKeepalive, verbose, removeJsonStringBackslash)
+verbose: %t`, method, url, timeout, postFile, rawData, replaceStrIndex, jsonValueType, contentType, disableKeepalive, removeJsonStringBackslash, verbose)
 
 	if url == "" {
 		log.Fatalln("--url can't be empty string, please specify a URL that you want to test.")
@@ -342,8 +342,5 @@ verbose: %t`, method, url, timeout, postFile, rawData, replaceStrIndex, jsonValu
 		Weight: 10,
 		Fn:     worker,
 	}
-	a := "a"
-	b := 'b'
-	fmt.Println(a, b)
 	boomer.Run(task)
 }
