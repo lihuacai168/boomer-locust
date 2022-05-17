@@ -6,12 +6,12 @@ ENV CGO_ENABLED 0
 ENV GOOS linux
 ENV GOPROXY https://goproxy.cn,direct
 
-WORKDIR /build
+WORKDIR /usr/src/app
 
 ADD go.mod .
 ADD go.sum .
 RUN go mod download
-COPY boomer_fasthttp.go .
+COPY . .
 RUN go build -ldflags="-s -w" -o /app/boomer ./boomer_fasthttp.go
 
 
