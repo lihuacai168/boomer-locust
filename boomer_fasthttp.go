@@ -144,8 +144,9 @@ func HandleReplaceBody(rawData []byte, dataType string, row []string, replaceKV 
 			intValue, err := string2int(originValue)
 			if err != nil {
 				newValue = originValue
+			} else {
+				newValue = intValue
 			}
-			newValue = intValue
 		default:
 			newValue = originValue
 		}
