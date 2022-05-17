@@ -1,10 +1,13 @@
 package main
 
 import (
+	parse "boomer_demo/parse"
 	"encoding/csv"
 	"flag"
 	"fmt"
 	jsoniter "github.com/json-iterator/go"
+	"github.com/myzhan/boomer"
+	"github.com/valyala/fasthttp"
 	"io"
 	"io/ioutil"
 	"log"
@@ -12,9 +15,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
-	"github.com/myzhan/boomer"
-	"github.com/valyala/fasthttp"
 )
 
 var json = jsoniter.ConfigCompatibleWithStandardLibrary
@@ -24,6 +24,7 @@ var postBody []byte
 var verbose bool
 var method string
 var url string
+var curl string
 var timeout time.Duration
 var postFile string
 var rawData string
@@ -250,6 +251,7 @@ func main() {
 
 	flag.StringVar(&method, "method", "GET", "HTTP method, one of GET, POST")
 	flag.StringVar(&url, "url", "", "URL")
+	flag.StringVar(&curl, "curl", "", "cURL")
 	flag.DurationVar(&timeout, "timeout", 10*time.Second, "HTTP request timeout")
 	flag.StringVar(&postFile, "post-file", "", "File containing data to POST. Remember also to set --content-type")
 	flag.StringVar(&rawData, "raw-data", "", "raw data to POST. Remember also to set --content-type")
@@ -273,8 +275,23 @@ func main() {
 		replaceStrIndex = strings.Replace(replaceStrIndex, "\\", "", -1)
 		rawData = strings.Replace(rawData, "\\", "", -1)
 		jsonHeaders = strings.Replace(jsonHeaders, "\\", "", -1)
+		//curl = strings.Replace(curl, "\\", "", -1)
 	}
 
+	if curl != "" {
+		curl = strings.Replace(curl, "\\", "\\\n\t\t", -1)
+		req, ok := parse.Parse(curl)
+		if !ok {
+			log.Println("parse curl err")
+			return
+		}
+		url = req.Url
+		method = req.Method
+		rawData = req.Body
+		b, _ := json.Marshal(req.Header)
+		s := string(b)
+		jsonHeaders = s
+	}
 	log.Printf(`Fasthttp benchmark is running with these args:
 method: %s
 url: %s
@@ -325,6 +342,8 @@ verbose: %t`, method, url, timeout, postFile, rawData, replaceStrIndex, jsonValu
 		Weight: 10,
 		Fn:     worker,
 	}
-
+	a := "a"
+	b := 'b'
+	fmt.Println(a, b)
 	boomer.Run(task)
 }
