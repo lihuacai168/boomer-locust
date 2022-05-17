@@ -2,7 +2,7 @@ FROM locustio/locust:1.6.0
 
 WORKDIR /app
 
-RUN pip install prometheus-client
+RUN pip install prometheus-client -i https://pypi.doubanio.com/simple
 
 COPY prometheus_exporter.py /app/prometheus_exporter.py
 
